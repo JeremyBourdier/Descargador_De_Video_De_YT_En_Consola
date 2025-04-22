@@ -1,0 +1,60 @@
+########################################################
+#              PROYECTO: YT‑DLP DOWNLOADER             #
+########################################################
+
+# ── Artefactos de Python ──────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+
+# ── Entornos virtuales ────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Herramientas de construcción / empaquetado ───────
+build/
+dist/
+pip-wheel-metadata/
+*.wheel
+
+# ── Carpetas de salida del programa ───────────────────
+videos/
+sounds/
+ambos/
+
+# ── Logs y archivos temporales ────────────────────────
+*.log
+*.tmp
+*.temp
+*.bak
+
+# ── Configuraciones locales de IDE/Editor ─────────────
+.vscode/
+.idea/
+*.code-workspace
+
+# ── Archivos de pruebas / cobertura ───────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Sistema operativo ─────────────────────────────────
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~

@@ -1,0 +1,5 @@
+# Dependencias principales del descargador
+#Comando para instalar dependencias: 
+#python -m pip install -r requirements.txt
+yt-dlp>=2024.03.10
+colorama>=0.4.6
