@@ -1,50 +1,37 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-# Descargador sencillo con menú coloreado y descarga paralela de playlists (con ThreadPoolExecutor)
-# Autor: Jeremy Bourdier (modificado para paralelización de playlists con ThreadPoolExecutor)
-
+import tkinter as tk
+from tkinter import ttk
+from tkinter import messagebox
+import os
+from concurrent.futures import ThreadPoolExecutor
+import yt_dlp
 from pathlib import Path
 from typing import Dict, List
-import os
-import sys
-from concurrent.futures import ThreadPoolExecutor
-
-from colorama import init, Fore, Style
-import yt_dlp
-
-
-# Inicializa colorama para Windows y Unix
-init(autoreset=True)
 
 # Paleta de colores
 C = {
-    "title": Fore.CYAN + Style.BRIGHT,
-    "option": Fore.YELLOW + Style.BRIGHT,
-    "input": Fore.GREEN,
-    "error": Fore.RED + Style.BRIGHT,
-    "ok": Fore.GREEN + Style.BRIGHT,
+    "title": "black",
+    "option": "yellow",
+    "input": "green",
+    "error": "red",
+    "ok": "green",
+    "bg": "#f0f0f0",
+    "fg": "black"
 }
 
-
 def crear_carpetas() -> None:
-    """
-    Crea las carpetas base si aún no existen
-    """
     for carpeta in ("videos", "sounds", "ambos"):
         Path(carpeta).mkdir(exist_ok=True)
 
-
 def opciones_descarga(modo: str, carpeta: str) -> Dict:
-    """
-    Devuelve el diccionario de opciones para yt_dlp según el modo
-    """
     if modo == "video":
-        formato = "bestvideo*+bestaudio"
-        post = [{"key": "FFmpegVideoConvertor", "preferedformat": "mp4"}]
+        formato = "bestvideo*+bestaudio/best" 
+        post = [{"key": "FFmpegVideoConvertor", "preferredformat": "mp4"}]
         plantilla = "%(title)s.%(ext)s"
-    else:  # audio
-        formato = "bestaudio"
+    else:  
+        formato = "bestaudio/best" 
         post = [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
@@ -55,110 +42,209 @@ def opciones_descarga(modo: str, carpeta: str) -> Dict:
     return {
         "format": formato,
         "outtmpl": os.path.join(carpeta, plantilla),
-        "quiet": True,  #para evitar desorden
+        "quiet": True,
         "postprocessors": post,
+        "ignoreerrors": True, # Para que la descarga de playlist no se detenga por un error
+        "progress_hooks": [lambda d: update_status(d, status_text)], 
     }
 
+# para actualizar el estado 
+def update_status(d, status_var):
+    if d['status'] == 'downloading':
+        filename = d.get('filename', 'unknown')
+        total_bytes_estimate = d.get('total_bytes_estimate')
+        downloaded_bytes = d.get('downloaded_bytes')
+        if total_bytes_estimate and downloaded_bytes:
+            percent = (downloaded_bytes / total_bytes_estimate) * 100
+            status_var.set(f"Descargando {Path(filename).name}: {percent:.1f}%")
+        else:
+            status_var.set(f"Descargando {Path(filename).name}...")
+    elif d['status'] == 'finished':
+        filename = d.get('filename', 'unknown')
+        status_var.set(f"Completado: {Path(filename).name}")
+    elif d['status'] == 'error':
+        filename = d.get('filename', 'unknown')
+        status_var.set(f"Error descargando {Path(filename).name}")
 
-def descargar_una_url(url: str, modo: str, carpeta: str) -> None:
-    """
-    Descarga una URL usando el modo indicado y guarda en la carpeta indicada
-    """
+
+def descargar_una_url(url: str, modo: str, carpeta: str, status_label_var: tk.StringVar) -> None:
     opciones = opciones_descarga(modo, carpeta)
     try:
+        
         with yt_dlp.YoutubeDL(opciones) as ydl:
             ydl.download([url])
-        print(C["ok"] + f"Descarga de {url} completada en {carpeta}")
+      
     except Exception as err:
-        print(C["error"] + f"Error al descargar {url}: {err}")
+        
+        status_label_var.set(f"Error al descargar {url}: {err}")
+       
+        root.after(0, lambda: messagebox.showerror("Error de Descarga", f"Ocurrió un error al descargar {url}:\n{err}"))
 
 
-def cabecera() -> None:
-    """
-    Imprime el título con estilo
-    """
-    print(C["title"] + "=" * 60)
-    print(C["title"] + "     DESCARGADOR YOUTUBE SIMPLE CON yt‑dlp (PARALELO)     ")
-    print(C["title"] + "=" * 60)
-    print()
+
+download_executor = None
+
+def iniciar_descarga():
+    global download_executor
+    url = url_entry.get()
+    modo_principal = modo_seleccionado.get()
+
+    if not url:
+        messagebox.showerror("Error", "Por favor, introduce una URL.")
+        return
 
 
-def mostrar_menu() -> str:
-    """
-    Imprime el menú y devuelve la opción elegida
-    """
-    print(C["option"] + "1" + Style.RESET_ALL + ". Descargar VIDEO con audio")
-    print(C["option"] + "2" + Style.RESET_ALL + ". Descargar AUDIO MP3")
-    print(C["option"] + "3" + Style.RESET_ALL + ". Descargar VIDEO y AUDIO")
-    print(C["option"] + "4" + Style.RESET_ALL + ". Descargar playlist en paralelo")
-    print(C["option"] + "5" + Style.RESET_ALL + ". Salir")
-    return input(C["input"] + "\nElige una opción (1‑5): ").strip()
+    if download_executor is None or download_executor._shutdown:
+      
+         num_hilos = num_hilos_var.get() if modo_principal == "Descargar playlist" else 4
+         download_executor = ThreadPoolExecutor(max_workers=num_hilos)
+
+    if modo_principal == "Video con audio":
+        carpeta = "videos"
+        download_executor.submit(descargar_una_url, url, "video", carpeta, status_text)
+    elif modo_principal == "Audio MP3":
+        carpeta = "sounds"
+        download_executor.submit(descargar_una_url, url, "audio", carpeta, status_text)
+    elif modo_principal == "Video y Audio":
+        
+        download_executor.submit(descargar_una_url, url, "video", "ambos", status_text)
+        download_executor.submit(descargar_una_url, url, "audio", "ambos", status_text)
+    elif modo_principal == "Descargar playlist":
+        playlist_url = url
+        modo_playlist = modo_seleccionado_playlist.get().lower()
+        carpeta_playlist = "videos" if modo_playlist == "video" else "sounds" if modo_playlist == "audio" else "ambos"
+        num_hilos = num_hilos_var.get()
+        
+        if download_executor is not None and not download_executor._shutdown:
+            download_executor.shutdown(wait=False) 
+        download_executor = ThreadPoolExecutor(max_workers=num_hilos)
+        # Ejecutar la extraccion en un hilo separado para no bloquear GUI
+        extraction_executor = ThreadPoolExecutor(max_workers=1)
+        extraction_executor.submit(extraer_y_descargar_playlist, playlist_url, modo_playlist, carpeta_playlist, download_executor)
+        extraction_executor.shutdown(wait=False) # no esperar
+    else:
+        messagebox.showerror("Error", "Por favor, selecciona un modo de descarga.")
 
 
-def descargar_playlist_paralelo(playlist_url: str, modo: str, carpeta_base: str, max_hilos: int = 14) -> None:
-    """
-    Descarga los videos de una playlist en paralelo usando ThreadPoolExecutor.
-    """
-    ydl_playlist = yt_dlp.YoutubeDL({'extract_flat': True, 'quiet': True})
+
+def extraer_y_descargar_playlist(playlist_url: str, modo: str, carpeta_base: str, executor: ThreadPoolExecutor) -> None:
+    ydl_playlist = yt_dlp.YoutubeDL({'extract_flat': True, 'quiet': True, 'ignoreerrors': True})
     try:
+        status_text.set(f"Extrayendo información de la playlist: {playlist_url}...")
         info = ydl_playlist.extract_info(playlist_url, download=False)
-        if 'entries' not in info:
-            print(C["error"] + "No se pudo extraer la información de la playlist.")
+
+        if 'entries' not in info or not info['entries']:
+            msg = "No se pudo extraer la información de la playlist o está vacía."
+            status_text.set(msg)
+            root.after(0, lambda: messagebox.showerror("Error", msg))
             return
-        urls = [entry['url'] for entry in info['entries'] if 'url' in entry]
-        print(C["option"] + f"Se encontraron {len(urls)} videos en la playlist. Descargando con hasta {max_hilos} hilos...\n")
 
-        with ThreadPoolExecutor(max_workers=max_hilos) as executor:
-            futures = [executor.submit(descargar_una_url, url, modo, carpeta_base) for url in urls]
-            for future in futures:
-                try:
-                    future.result()  # Espera a que la tarea termine y maneja posibles excepciones
-                except Exception as e:
-                    print(C["error"] + f"Error en una descarga: {e}")
+        
+        urls = [entry['url'] for entry in info['entries'] if entry and 'url' in entry]
 
-        print(C["ok"] + "Descarga de la playlist completada.\n")
+        if not urls:
+            msg = "No se encontraron URLs válidas en la playlist."
+            status_text.set(msg)
+            root.after(0, lambda: messagebox.showerror("Error", msg))
+            return
+
+        status_text.set(f"Se encontraron {len(urls)} videos. Descargando con hasta {executor._max_workers} hilos...")
+
+       
+        futures = [executor.submit(descargar_una_url, url, modo, carpeta_base, status_text) for url in urls]
+
+    
+
+     
+        status_text.set(f"Descarga de {len(urls)} videos iniciada...")
+
 
     except Exception as err:
-        print(C["error"] + f"Error al procesar la playlist: {err}")
+        error_msg = f"Error al procesar la playlist: {err}"
+        status_text.set(error_msg)
+        root.after(0, lambda: messagebox.showerror("Error", f"{error_msg}\n{err}"))
+    finally:
+      
+        pass
 
 
-def main() -> None:
-    crear_carpetas()
-    cabecera()
 
-    while True:
-        opcion = mostrar_menu()
-
-        if opcion not in {"1", "2", "3", "4", "5"}:
-            print(C["error"] + "Opción no válida\n")
-            continue
-        if opcion == "5":
-            print(C["ok"] + "Hasta luego")
-            break
-
-        if opcion in {"1", "2", "3"}:
-            url = input(C["input"] + "Pega la URL de YouTube: ").strip()
-            if opcion == "1":
-                descargar_una_url(url, "video", "videos")
-                print("\n")
-            elif opcion == "2":
-                descargar_una_url(url, "audio", "sounds")
-                print("\n")
-            else:  # opción 3
-                descargar_una_url(url, "video", "ambos")
-                descargar_una_url(url, "audio", "ambos")
-                print("\n")
-        elif opcion == "4":
-            playlist_url = input(C["input"] + "Pega la URL de la playlist de YouTube: ").strip()
-            modo_playlist = input(C["input"] + "Descargar como (video/audio/ambos): ").strip().lower()
-            carpeta_playlist = "videos" if modo_playlist == "video" else "sounds" if modo_playlist == "audio" else "ambos"
-            descargar_playlist_paralelo(playlist_url, modo_playlist, carpeta_playlist, max_hilos=14) # límite de hilos
-        else:
-            print(C["error"] + "Opción no implementada.\n")
+# --- Interfaz Gráfica ---
+root = tk.Tk()
+root.title("Descargador de YouTube")
+root.config(bg=C["bg"])
 
 
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        sys.exit("\nInterrumpido por el usuario")
+style = ttk.Style()
+style.configure("TFrame", background=C["bg"])
+style.configure("TLabel", background=C["bg"], foreground=C["fg"])
+style.configure("TButton", background="#d9d9d9", foreground=C["fg"])
+style.map("TButton", background=[('active', '#ececec')]) # Estilo para botón activo
+
+# Título
+title_label = ttk.Label(root, text="Descargador de YouTube", font=("Arial", 16, "bold"), foreground=C["title"], background=C["bg"])
+title_label.pack(pady=10)
+
+# URL
+url_frame = ttk.Frame(root, style="TFrame")
+url_label = ttk.Label(url_frame, text="URL:", style="TLabel")
+url_entry = ttk.Entry(url_frame, width=50)
+url_label.pack(side=tk.LEFT, padx=5)
+url_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+url_frame.pack(pady=5, padx=10, fill=tk.X)
+
+
+modo_frame = ttk.Frame(root, style="TFrame")
+modo_label = ttk.Label(modo_frame, text="Acción:", style="TLabel")
+modo_seleccionado = tk.StringVar(value="Video con audio") 
+modo_combo = ttk.Combobox(modo_frame, textvariable=modo_seleccionado, values=["Video con audio", "Audio MP3", "Video y Audio", "Descargar playlist"], state="readonly")
+modo_label.pack(side=tk.LEFT, padx=5)
+modo_combo.pack(side=tk.LEFT, padx=5)
+modo_frame.pack(pady=5, padx=10, fill=tk.X)
+
+playlist_options_frame = ttk.Frame(root, style="TFrame")
+playlist_modo_label = ttk.Label(playlist_options_frame, text="Formato Playlist:", style="TLabel")
+modo_seleccionado_playlist = tk.StringVar(value="video") 
+playlist_modo_combo = ttk.Combobox(playlist_options_frame, textvariable=modo_seleccionado_playlist, values=["video", "audio", "ambos"], state="readonly")
+num_hilos_label = ttk.Label(playlist_options_frame, text="Hilos:", style="TLabel")
+
+default_threads = os.cpu_count() or 4 
+num_hilos_var = tk.IntVar(value=default_threads)
+num_hilos_spinbox = ttk.Spinbox(playlist_options_frame, from_=1, to=64, textvariable=num_hilos_var, width=5) 
+
+playlist_modo_label.pack(side=tk.LEFT, padx=5)
+playlist_modo_combo.pack(side=tk.LEFT, padx=5)
+num_hilos_label.pack(side=tk.LEFT, padx=5)
+num_hilos_spinbox.pack(side=tk.LEFT, padx=5)
+
+
+
+def mostrar_opciones_playlist(*args):
+    if modo_seleccionado.get() == "Descargar playlist":
+        playlist_options_frame.pack(pady=5, padx=10, fill=tk.X, before=descargar_button) 
+    else:
+        playlist_options_frame.pack_forget()
+
+modo_seleccionado.trace_add("write", mostrar_opciones_playlist)
+
+descargar_button = ttk.Button(root, text="Descargar", command=iniciar_descarga, style="TButton")
+descargar_button.pack(pady=20) 
+
+
+status_text = tk.StringVar(value="Listo")
+status_label = ttk.Label(root, textvariable=status_text, style="TLabel", wraplength=400) 
+status_label.pack(pady=5, padx=10, fill=tk.X)
+
+
+def on_closing():
+    global download_executor
+    if download_executor and not download_executor._shutdown:
+        print("Cerrando hilos de descarga...")
+        download_executor.shutdown(wait=False) 
+    root.destroy()
+
+root.protocol("WM_DELETE_WINDOW", on_closing)
+
+crear_carpetas()
+mostrar_opciones_playlist()
+root.mainloop()
