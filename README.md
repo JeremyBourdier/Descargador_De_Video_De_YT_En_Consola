@@ -16,10 +16,11 @@ Configuración rápida (Windows, macOS o Linux)
 
 ```bash
 # 1 – Descarga o clona el proyecto
-git clone https://github.com/
-cd yt‑downloader          # entra al directorio
+git clone https://github.com/JeremyBourdier/Descargador_De_Video_De_YT_En_Consola
+#Entra al direcctorio y abre la terminal
 
-# 2 – Crea y activa un entorno virtual (recomendado)
+
+# 2 – Crea y activa un entorno virtual 
 python -m venv .venv
 
 # Windows
