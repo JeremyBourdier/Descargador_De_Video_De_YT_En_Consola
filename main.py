@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-# Descargador sencillo con menú coloreado y descarga paralela de playlists
-# Autor: Jeremy Bourdier (modificado para paralelización de playlists)
+# Descargador sencillo con menú coloreado y descarga paralela de playlists (con ThreadPoolExecutor)
+# Autor: Jeremy Bourdier (modificado para paralelización de playlists con ThreadPoolExecutor)
 
 from pathlib import Path
 from typing import Dict, List
 import os
 import sys
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from colorama import init, Fore, Style
 import yt_dlp
@@ -55,7 +55,7 @@ def opciones_descarga(modo: str, carpeta: str) -> Dict:
     return {
         "format": formato,
         "outtmpl": os.path.join(carpeta, plantilla),
-        "quiet": True,  # Es mejor silenciar la salida en hilos para evitar desorden
+        "quiet": True,  #para evitar desorden
         "postprocessors": post,
     }
 
@@ -95,9 +95,9 @@ def mostrar_menu() -> str:
     return input(C["input"] + "\nElige una opción (1‑5): ").strip()
 
 
-def descargar_playlist_paralelo(playlist_url: str, modo: str, carpeta_base: str, max_hilos: int = 5) -> None:
+def descargar_playlist_paralelo(playlist_url: str, modo: str, carpeta_base: str, max_hilos: int = 14) -> None:
     """
-    Descarga los videos de una playlist en paralelo.
+    Descarga los videos de una playlist en paralelo usando ThreadPoolExecutor.
     """
     ydl_playlist = yt_dlp.YoutubeDL({'extract_flat': True, 'quiet': True})
     try:
@@ -108,20 +108,14 @@ def descargar_playlist_paralelo(playlist_url: str, modo: str, carpeta_base: str,
         urls = [entry['url'] for entry in info['entries'] if 'url' in entry]
         print(C["option"] + f"Se encontraron {len(urls)} videos en la playlist. Descargando con hasta {max_hilos} hilos...\n")
 
-        threads = []
-        semaforo = threading.Semaphore(max_hilos)  # Controla el número de hilos concurrentes
+        with ThreadPoolExecutor(max_workers=max_hilos) as executor:
+            futures = [executor.submit(descargar_una_url, url, modo, carpeta_base) for url in urls]
+            for future in futures:
+                try:
+                    future.result()  # Espera a que la tarea termine y maneja posibles excepciones
+                except Exception as e:
+                    print(C["error"] + f"Error en una descarga: {e}")
 
-        def descargar_con_semaforo(url):
-            with semaforo:
-                descargar_una_url(url, modo, carpeta_base)
-
-        for url in urls:
-            thread = threading.Thread(target=descargar_con_semaforo, args=(url,))
-            threads.append(thread)
-            thread.start()
-
-        for thread in threads:
-            thread.join()  # Espera a que todos los hilos terminen
         print(C["ok"] + "Descarga de la playlist completada.\n")
 
     except Exception as err:
@@ -158,7 +152,7 @@ def main() -> None:
             playlist_url = input(C["input"] + "Pega la URL de la playlist de YouTube: ").strip()
             modo_playlist = input(C["input"] + "Descargar como (video/audio/ambos): ").strip().lower()
             carpeta_playlist = "videos" if modo_playlist == "video" else "sounds" if modo_playlist == "audio" else "ambos"
-            descargar_playlist_paralelo(playlist_url, modo_playlist, carpeta_playlist, max_hilos=10) # Establecemos el límite de hilos
+            descargar_playlist_paralelo(playlist_url, modo_playlist, carpeta_playlist, max_hilos=14) # límite de hilos
         else:
             print(C["error"] + "Opción no implementada.\n")
 
