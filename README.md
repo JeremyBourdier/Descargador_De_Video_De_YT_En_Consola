@@ -1,4 +1,4 @@
-content = """INSTALLATION GUIDE – YouTube Downloader (yt‑dlp)
+INSTALLATION GUIDE – YouTube Downloader (yt‑dlp)
 =============================================================
 
 Prerequisites
